@@ -6,7 +6,7 @@ RUN mkdir -p /input_data
 RUN mkdir -p /results
 VOLUME /results
 VOLUME /input_data
-COPY person_linkage_case_study_sample_data_spark_local.py person_linkage_case_study_spark_local_lock_no_jupyter.txt ./
+COPY person_linkage_case_study_sample_data_spark.py person_linkage_case_study_spark_local_lock_no_jupyter.txt ./
 
 # Create a new conda environment
 SHELL ["/bin/bash", "--login", "-c"]
