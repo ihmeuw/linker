@@ -24,5 +24,4 @@ COPY --from=conda-base person_linkage_case_study_sample_data_spark.py ./
 ENV PATH=/opt/conda/envs/person_linkage_case_study_spark/bin:/opt/conda/condabin:${PATH}
 
 # Run your script with Spark on startup
-CMD ["/bin/bash", "-c", "conda run -n person_linkage_case_study_spark python /opt/spark/work-dir/person_linkage_case_study_sample_data_spark.py \
-     && mv census_2030_with_piks_sample.parquet /results/"]
+CMD ["/bin/bash", "-c", "conda run -n person_linkage_case_study_spark python /opt/spark/work-dir/person_linkage_case_study_sample_data_spark.py"]
