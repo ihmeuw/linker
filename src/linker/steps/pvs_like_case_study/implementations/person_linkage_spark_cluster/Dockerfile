@@ -15,7 +15,7 @@ RUN conda init bash \
     && conda create -n person_linkage_case_study_spark --file=person_linkage_case_study_spark_lock_no_jupyter.txt
 
 # Stage 2: Start with the Apache Spark base image
-FROM apache/spark as spark-base
+FROM apache/spark@sha256:a1dd2487a97fb5e35c5a5b409e830b501a92919029c62f9a559b13c4f5c50f63 as spark-base
 
 COPY --from=conda-base /opt/conda /opt/conda
 COPY --from=conda-base person_linkage_case_study_sample_data_spark.py ./
