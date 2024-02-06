@@ -23,7 +23,7 @@ class Config:
     ):
         self.pipeline_path = pipeline_specification
         self.pipeline = load_yaml(self.pipeline_path) if pipeline_specification else {}
-        self.input_data = self._load_input_data_paths(input_data) if input_data else []
+        self.input_data = self._load_input_data_paths(input_data) if input_data else {}
         self.computing_environment_path = (
             Path(computing_environment) if computing_environment else None
         )
@@ -34,6 +34,8 @@ class Config:
         self.spark = self._get_spark_requests(self.environment)
         self.schema = self._get_schema()
         self._validate()
+        ## TODO: refactor placement of this when we refactor other validation methods
+        self.schema.add_input_filename_bindings(self.input_data)
 
     def get_resources(self) -> Dict[str, str]:
         return {
@@ -85,6 +87,7 @@ class Config:
         errors = {
             **self._validate_files(),
             **self._validate_input_data(),
+            **self.schema.validate_input_filenames(self.input_data),
         }
         if errors:
             exit_with_validation_error(errors)
@@ -110,7 +113,7 @@ class Config:
 
     def _validate_input_data(self) -> Dict:
         errors = defaultdict(dict)
-        for input_filepath in self.input_data:
+        for input_filepath in self.input_data.values():
             input_data_errors = self.schema.validate_input(input_filepath)
             if input_data_errors:
                 errors["INPUT DATA ERRORS"][str(input_filepath)] = input_data_errors
@@ -133,8 +136,11 @@ class Config:
 
     @staticmethod
     def _load_input_data_paths(input_data: Path) -> List[Path]:
-        file_list = [Path(filepath).resolve() for filepath in load_yaml(input_data).values()]
-        missing = [str(file) for file in file_list if not file.exists()]
+        file_list = {
+            filename: Path(filepath).resolve()
+            for filename, filepath in load_yaml(input_data).items()
+        }
+        missing = [str(file) for file in file_list.values() if not file.exists()]
         if missing:
             raise RuntimeError(f"Cannot find input data: {missing}")
         return file_list

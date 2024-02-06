@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -7,7 +8,8 @@ from loguru import logger
 
 
 def run_with_singularity(
-    input_data: List[Path],
+    input_bindings: List[str],
+    input_env_vars: Dict[str, str],
     results_dir: Path,
     diagnostics_dir: Path,
     step_id: str,
@@ -15,12 +17,15 @@ def run_with_singularity(
     config: Optional[Dict[str, str]],
 ) -> None:
     logger.info(f"Running step {step_id} container with singularity")
-    _run_container(input_data, results_dir, diagnostics_dir, container_path, config)
+    _run_container(
+        input_bindings, input_env_vars, results_dir, diagnostics_dir, container_path, config
+    )
     _clean(results_dir, container_path)
 
 
 def _run_container(
-    input_data: List[Path],
+    input_bindings: List[str],
+    input_env_vars: Dict[str, str],
     results_dir: Path,
     diagnostics_dir: Path,
     container_path: Path,
@@ -30,13 +35,18 @@ def _run_container(
         "singularity run --containall --no-home --bind /tmp:/tmp "
         f"--bind {results_dir}:/results --bind {diagnostics_dir}:/diagnostics "
     )
-    for filepath in input_data:
-        cmd += f"--bind {str(filepath)}:/input_data/main_input_{str(filepath.name)} "
+    for outside_path, inside_path in input_bindings.items():
+        cmd += f"--bind {outside_path}:{inside_path} "
     cmd += f"{container_path}"
-    _run_cmd(diagnostics_dir, cmd, config)
+    _run_cmd(diagnostics_dir, cmd, config, input_env_vars)
 
 
-def _run_cmd(diagnostics_dir: Path, cmd: str, config: Optional[Dict[str, str]]) -> None:
+def _run_cmd(
+    diagnostics_dir: Path,
+    cmd: str,
+    config: Optional[Dict[str, str]],
+    input_env_vars: Dict[str, str],
+) -> None:
     logger.debug(f"Command: {cmd}")
     # TODO: pipe this realtime to stdout (using subprocess.Popen I think)
     env_vars = os.environ.copy()
@@ -45,6 +55,11 @@ def _run_cmd(diagnostics_dir: Path, cmd: str, config: Optional[Dict[str, str]]) 
         #   prepended with 'SINGULARITYENV_'
         env_config = {f"SINGULARITYENV_{key}": value for (key, value) in config.items()}
         env_vars.update(env_config)
+    step_vars = {
+        f"SINGULARITYENV_{env_var}": ",".join(container_paths)
+        for env_var, container_paths in input_env_vars.items()
+    }
+    env_vars.update(step_vars)
     process = subprocess.run(
         cmd,
         shell=True,

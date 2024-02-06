@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 
 from linker.configuration import Config
+from linker.pipeline_schema import PIPELINE_SCHEMAS, PipelineSchema
+from linker.pipeline_schema_constants import ALLOWED_SCHEMA_PARAMS
 from linker.step import Step
 from tests.unit.conftest import (
     ENV_CONFIG_DICT,
@@ -15,7 +17,7 @@ from tests.unit.conftest import (
 def test_config_instantiation(test_dir, default_config):
     assert default_config.pipeline == PIPELINE_CONFIG_DICT["good"]
     assert default_config.environment == ENV_CONFIG_DICT
-    assert default_config.input_data == [
+    assert list(default_config.input_data.values()) == [
         Path(x) for x in [f"{test_dir}/input_data{n}/file{n}.csv" for n in [1, 2]]
     ]
     assert default_config.computing_environment == ENV_CONFIG_DICT["computing_environment"]
@@ -24,14 +26,16 @@ def test_config_instantiation(test_dir, default_config):
 
 def test__get_schema(default_config):
     """Test that the schema is correctly loaded from the pipeline.yaml"""
-    assert default_config.schema.steps == [Step("step_1"), Step("step_2")]
+    assert default_config.schema == PIPELINE_SCHEMAS[1]
 
 
 @pytest.mark.parametrize("input_data", ["good", "bad"])
 def test__load_input_data_paths(test_dir, input_data):
     if input_data == "good":
         paths = Config._load_input_data_paths(f"{test_dir}/input_data.yaml")
-        assert paths == [Path(f"{test_dir}/input_data{n}/file{n}.csv") for n in [1, 2]]
+        assert list(paths.values()) == [
+            Path(f"{test_dir}/input_data{n}/file{n}.csv") for n in [1, 2]
+        ]
     if input_data == "bad":
         with pytest.raises(RuntimeError, match=r"Cannot find input data: .*"):
             Config._load_input_data_paths(f"{test_dir}/bad_input_data.yaml")
@@ -124,6 +128,34 @@ def test_bad_input_data(test_dir, caplog):
                 ],
                 ".*/broken_file2.csv": [
                     "- Data file .* is missing required column\\(s\\) .*"
+                ],
+            }
+        },
+    )
+
+
+def test_missing_step_input(default_config_params, caplog, mocker):
+    mock_input_dependency = "file2"
+    mock_pipeline_schemas = ALLOWED_SCHEMA_PARAMS
+    mock_pipeline_schemas["development"]["steps"]["step_2"]["inputs"][
+        "DUMMY_CONTAINER_SECONDARY_INPUT_FILE_PATHS"
+    ]["input_filenames"] = [mock_input_dependency]
+    mocker.patch("linker.pipeline_schema.ALLOWED_SCHEMA_PARAMS", mock_pipeline_schemas)
+    mocker.patch("linker.configuration.PIPELINE_SCHEMAS", PipelineSchema._get_schemas())
+    config_params = default_config_params
+    config_params.update({"computing_environment": None})
+
+    with pytest.raises(SystemExit) as e:
+        Config(**config_params)
+
+    check_expected_validation_exit(
+        error=e,
+        caplog=caplog,
+        error_no=errno.EINVAL,
+        expected_msg={
+            "STEP INPUT ERRORS": {
+                "step_2": [
+                    f"- Step requires input data key {mock_input_dependency} but it was not found in the input data."
                 ],
             }
         },

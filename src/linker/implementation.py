@@ -37,7 +37,6 @@ class Implementation:
         session: Optional["drmaa.Session"],
         runner: Callable,
         step_id: str,
-        input_data: List[Path],
         results_dir: Path,
         diagnostics_dir: Path,
     ) -> None:
@@ -54,7 +53,7 @@ class Implementation:
                 step_id=step_id,
                 results_dir=results_dir,
                 diagnostics_dir=diagnostics_dir,
-                input_data=input_data,
+                input_bindings=self.step.input_bindings,
             )
             # Add the spark master url to implementation config
             if not self.config:
@@ -63,7 +62,8 @@ class Implementation:
 
         runner(
             container_engine=self._container_engine,
-            input_data=input_data,
+            input_bindings=self.step.input_bindings,
+            input_env_vars=self.step.input_env_vars,
             results_dir=results_dir,
             diagnostics_dir=diagnostics_dir,
             step_id=step_id,

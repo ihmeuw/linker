@@ -51,3 +51,14 @@ def validate_dummy_output(filepath: Path) -> None:
         raise LookupError(
             f"Data file {filepath} is missing required column(s) {missing_columns}"
         )
+
+
+def validate_dummy_input(filepath: Path) -> Optional[List[str]]:
+    "Wrap the output file validator for now, since it is the same"
+    "as the input. The input validation is batched with the other"
+    "config validations, so we need to return the log message"
+    "instead of raising an exception directly."
+    try:
+        validate_dummy_output(filepath)
+    except Exception as e:
+        return [e.args[0]]

@@ -1,8 +1,8 @@
-from pathlib import Path
-from typing import Callable, List, Optional
+from collections import defaultdict
+from typing import Callable, List
 
+from linker.pipeline_schema_constants import ALLOWED_SCHEMA_PARAMS
 from linker.step import Step
-from linker.utilities.data_utils import validate_dummy_output
 
 
 class PipelineSchema:
@@ -11,7 +11,7 @@ class PipelineSchema:
     def __init__(self, name, validate_input) -> None:
         self.name = name
         self.validate_input: Callable = validate_input
-        self.steps = []
+        self.steps: List[Step] = []
 
     def __repr__(self) -> str:
         return f"PipelineSchema.{self.name}"
@@ -20,47 +20,25 @@ class PipelineSchema:
     def _get_schemas(cls) -> List["PipelineSchema"]:
         """Creates the allowable schema for the pipeline."""
         schemas = []
-
-        # pvs-like case study
-        schemas.append(
-            PipelineSchema._generate_schema(
-                "pvs_like_case_study",
-                # TODO: Make a real validator for
-                # pvs_like_case_study and/or remove this hack
-                lambda x: None,
-                Step("pvs_like_case_study"),
-            )
-        )
-
-        # development dummy
-        schemas.append(
-            PipelineSchema._generate_schema(
-                "development",
-                validate_dummy_input,
-                Step("step_1"),
-                Step("step_2"),
-            )
-        )
+        for schema_name, schema_params in ALLOWED_SCHEMA_PARAMS.items():
+            schema = cls(schema_name, schema_params["validate_input"])
+            for step_name, step_params in schema_params["steps"].items():
+                schema.steps.append(Step(step_name, **step_params))
+            schemas.append(schema)
 
         return schemas
 
-    def _add_step(self, step: Step) -> None:
-        self.steps.append(step)
+    def add_input_filename_bindings(self, input_data: dict) -> None:
+        for step in self.steps:
+            step.add_input_filename_bindings(input_data)
 
-    @classmethod
-    def _generate_schema(cls, name: str, validate_input: Callable, *steps: Step) -> None:
-        schema = cls(name, validate_input)
-        for step in steps:
-            schema._add_step(step)
-        return schema
-
-
-def validate_dummy_input(filepath: Path) -> Optional[List[str]]:
-    "Wrap the output file validator for now, since it is the same"
-    try:
-        validate_dummy_output(filepath)
-    except Exception as e:
-        return [e.args[0]]
+    def validate_input_filenames(self, input_data: dict) -> dict:
+        errors = defaultdict(dict)
+        for step in self.steps:
+            step_errors = step.validate_input_filenames(input_data)
+            if step_errors:
+                errors["STEP INPUT ERRORS"][step.name] = step_errors
+        return errors
 
 
 PIPELINE_SCHEMAS = PipelineSchema._get_schemas()

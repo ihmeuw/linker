@@ -1,3 +1,4 @@
+import json
 from os import strerror
 from pathlib import Path
 from time import strftime
@@ -12,7 +13,8 @@ DOCKER_TIMEOUT = 360  # seconds
 
 
 def run_with_docker(
-    input_data: List[Path],
+    input_bindings: List[str],
+    input_env_vars: Dict[str, str],
     results_dir: Path,
     diagnostics_dir: Path,
     step_id: str,
@@ -23,7 +25,7 @@ def run_with_docker(
     client = get_docker_client()
     image_id = _load_image(client, container_path)
     container = _run_container(
-        client, image_id, input_data, results_dir, diagnostics_dir, config
+        client, image_id, input_bindings, input_env_vars, results_dir, diagnostics_dir, config
     )
     _clean(client, image_id, container)
 
@@ -55,20 +57,28 @@ def _load_image(client: DockerClient, image_path: Path) -> str:
 def _run_container(
     client: DockerClient,
     image_id: str,
-    input_data: List[Path],
+    input_bindings: Dict[str, str],
+    input_env_vars: Dict[str, List[str]],
     results_dir: Path,
     diagnostics_dir: Path,
     config: Optional[Dict[str, str]],
 ):
     logger.info(f"Running the container from image {image_id}")
-    volumes = {
+    volumes = {}
+    for outside_path, inside_path in input_bindings.items():
+        volumes[outside_path] = {"bind": f"{inside_path}", "mode": "ro"}
+    volumes.update(
         **{
-            str(dataset): {"bind": f"/input_data/main_input_{dataset.name}", "mode": "ro"}
-            for dataset in input_data
-        },
-        str(results_dir): {"bind": "/results", "mode": "rw"},
-        str(diagnostics_dir): {"bind": "/diagnostics", "mode": "rw"},
+            str(results_dir): {"bind": "/results", "mode": "rw"},
+            str(diagnostics_dir): {"bind": "/diagnostics", "mode": "rw"},
+        }
+    )
+    input_env_vars = {
+        env_var: json.dumps(container_paths)
+        for env_var, container_paths in input_env_vars.items()
     }
+    environment = {**config, **input_env_vars}
+
     try:
         container = client.containers.run(
             image_id,
@@ -76,7 +86,7 @@ def _run_container(
             detach=True,
             auto_remove=True,
             tty=True,
-            environment=config,
+            environment=environment,
         )
         logs = container.logs(stream=True, follow=True, stdout=True, stderr=True)
         with open(diagnostics_dir / f"docker.o", "wb") as output_file:
