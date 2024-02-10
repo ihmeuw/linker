@@ -6,7 +6,7 @@ from loguru import logger
 from linker.step import Step
 from linker.utilities.data_utils import load_yaml
 from linker.utilities.slurm_utils import get_slurm_drmaa
-from linker.utilities.spark_utils import build_cluster
+from linker.utilities.spark_utils import build_cluster, build_local_cluster
 
 
 class Implementation:
@@ -42,20 +42,28 @@ class Implementation:
         diagnostics_dir: Path,
     ) -> None:
         logger.info(f"Running pipeline step ID {step_id}")
-        if self._requires_spark and session:
+        if self._requires_spark:
+            if not session:
             # having an active drmaa session implies we are running on a slurm cluster
             # (i.e. not 'local' computing environment) and so need to spin up a spark
             # cluster instead of relying on the implementation to do it in a container
-            drmaa = get_slurm_drmaa()
-            spark_master_url, job_id = build_cluster(
-                drmaa=drmaa,
-                session=session,
-                resources=self.resources,
-                step_id=step_id,
-                results_dir=results_dir,
-                diagnostics_dir=diagnostics_dir,
-                input_data=input_data,
-            )
+                spark_master_url, job_id = build_local_cluster(
+                    resources=self.resources,
+                    step_id=step_id,
+                    results_dir=results_dir,
+                    diagnostics_dir=diagnostics_dir,
+                    input_data=input_data)
+            else:
+                drmaa = get_slurm_drmaa()
+                spark_master_url, job_id = build_cluster(
+                    drmaa=drmaa,
+                    session=session,
+                    resources=self.resources,
+                    step_id=step_id,
+                    results_dir=results_dir,
+                    diagnostics_dir=diagnostics_dir,
+                    input_data=input_data,
+                )
             # Add the spark master url to implementation config
             if not self.config:
                 self.config = {}
@@ -73,9 +81,13 @@ class Implementation:
             config=self.config,
         )
 
-        if self._requires_spark and session and not self.resources["spark"]["keep_alive"]:
+        if self._requires_spark and not self.resources["spark"]["keep_alive"]:
             logger.info(f"Shutting down spark cluster for pipeline step ID {step_id}")
-            session.control(job_id, drmaa.JobControlAction.TERMINATE)
+            if session:
+                session.control(job_id, drmaa.JobControlAction.TERMINATE)
+            else:
+                # Shut down the local spark cluster
+                pass
 
         for results_file in results_dir.glob("result.parquet"):
             self.step.validate_output(results_file)
