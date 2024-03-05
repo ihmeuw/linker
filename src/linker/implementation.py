@@ -1,29 +1,26 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional
 
 from loguru import logger
 
+from linker.configuration import Config
 from linker.step import Step
+from linker.utilities import paths
 from linker.utilities.data_utils import load_yaml
 from linker.utilities.slurm_utils import get_slurm_drmaa
-from linker.utilities.spark_utils import build_cluster, build_local_cluster
+from linker.utilities.spark_utils import build_spark_cluster, build_local_cluster
 
 
 class Implementation:
     def __init__(
         self,
+        config: Config,
         step: Step,
-        implementation_name: str,
-        implementation_config: Optional[Dict[str, Any]],
-        container_engine: str,
-        resources: Dict[str, Any],
     ):
         self.step = step
+        self.config = config
         self._pipeline_step_name = step.name
-        self.name = implementation_name
-        self.config = self._format_config(implementation_config)
-        self._container_engine = container_engine
-        self.resources = resources
+        self.name = config.get_implementation_name(step.name)
         self._metadata = self._load_metadata()
         self.step_name = self._metadata[self.name]["step"]
         self._requires_spark = self._metadata[self.name].get("requires_spark", False)
@@ -42,7 +39,11 @@ class Implementation:
         diagnostics_dir: Path,
     ) -> None:
         logger.info(f"Running pipeline step ID {step_id}")
+        implementation_config = self.config.get_implementation_specific_configuration(
+            self.step_name
+        )
         if self._requires_spark:
+            spark_resources = self.config.spark_resources
             if not session:
             # having an active drmaa session implies we are running on a slurm cluster
             # (i.e. not 'local' computing environment) and so need to spin up a spark
@@ -55,22 +56,20 @@ class Implementation:
                     input_data=input_data)
             else:
                 drmaa = get_slurm_drmaa()
-                spark_master_url, job_id = build_cluster(
-                    drmaa=drmaa,
-                    session=session,
-                    resources=self.resources,
-                    step_id=step_id,
-                    results_dir=results_dir,
-                    diagnostics_dir=diagnostics_dir,
-                    input_data=input_data,
-                )
+                spark_master_url, job_id = build_spark_cluster(
+                drmaa=drmaa,
+                session=session,
+                config=self.config,
+                step_id=step_id,
+                results_dir=results_dir,
+                diagnostics_dir=diagnostics_dir,
+                input_data=input_data,
+            )
             # Add the spark master url to implementation config
-            if not self.config:
-                self.config = {}
-            self.config["DUMMY_CONTAINER_SPARK_MASTER_URL"] = spark_master_url
+            implementation_config["DUMMY_CONTAINER_SPARK_MASTER_URL"] = spark_master_url
 
         runner(
-            container_engine=self._container_engine,
+            container_engine=self.config.container_engine,
             input_data=input_data,
             results_dir=results_dir,
             diagnostics_dir=diagnostics_dir,
@@ -78,10 +77,10 @@ class Implementation:
             step_name=self.step_name,
             implementation_name=self.name,
             container_full_stem=self._container_full_stem,
-            config=self.config,
+            implementation_config=implementation_config,
         )
 
-        if self._requires_spark and not self.resources["spark"]["keep_alive"]:
+        if self._requires_spark and session and not spark_resources["keep_alive"]:
             logger.info(f"Shutting down spark cluster for pipeline step ID {step_id}")
             if session:
                 session.control(job_id, drmaa.JobControlAction.TERMINATE)
@@ -89,8 +88,7 @@ class Implementation:
                 # Shut down the local spark cluster
                 pass
 
-        for results_file in results_dir.glob("result.parquet"):
-            self.step.validate_output(results_file)
+        self.step.validate_output(step_id, results_dir)
 
     def validate(self) -> List[Optional[str]]:
         """Validates individual Implementation instances. This is intended to be
@@ -105,28 +103,8 @@ class Implementation:
     # Helper methods #
     ##################
 
-    def _format_config(self, config: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
-        return self._stringify_keys_values(config) if config else None
-
-    StringifiedDictionary = Dict[str, Union[str, "StringifiedDictionary"]]
-
-    def _stringify_keys_values(self, config: Any) -> StringifiedDictionary:
-        # Singularity requires env variables be strings
-        if isinstance(config, Dict):
-            return {
-                str(key): self._stringify_keys_values(value) for key, value in config.items()
-            }
-        else:
-            # The last step of the recursion is not a dict but the leaf node's value
-            return str(config)
-
     def _load_metadata(self) -> Dict[str, str]:
-        metadata_path = Path(__file__).parent / "implementation_metadata.yaml"
-        metadata = load_yaml(metadata_path)
-        if not self.name in metadata:
-            raise RuntimeError(
-                f"Implementation '{self.name}' is not defined in implementation_metadata.yaml"
-            )
+        metadata = load_yaml(paths.IMPLEMENTATION_METADATA)
         return metadata
 
     def _get_container_full_stem(self) -> str:
@@ -143,17 +121,17 @@ class Implementation:
     def _validate_container_exists(self, logs: List[Optional[str]]) -> List[Optional[str]]:
         err_str = f"Container '{self._container_full_stem}' does not exist."
         if (
-            self._container_engine == "docker"
+            self.config.container_engine == "docker"
             and not Path(f"{self._container_full_stem}.tar.gz").exists()
         ):
             logs.append(err_str)
         if (
-            self._container_engine == "singularity"
+            self.config.container_engine == "singularity"
             and not Path(f"{self._container_full_stem}.sif").exists()
         ):
             logs.append(err_str)
         if (
-            self._container_engine == "undefined"
+            self.config.container_engine == "undefined"
             and not Path(f"{self._container_full_stem}.tar.gz").exists()
             and not Path(f"{self._container_full_stem}.sif").exists()
         ):

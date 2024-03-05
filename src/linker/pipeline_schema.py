@@ -2,15 +2,15 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from linker.step import Step
-from linker.utilities.data_utils import validate_dummy_output
+from linker.utilities.data_utils import validate_dummy_file
 
 
 class PipelineSchema:
     """Defines the allowable schema(s) for the pipeline."""
 
-    def __init__(self, name, validate_input) -> None:
+    def __init__(self, name: str, validate_input: Callable) -> None:
         self.name = name
-        self.validate_input: Callable = validate_input
+        self.validate_input = validate_input
         self.steps = []
 
     def __repr__(self) -> str:
@@ -58,7 +58,7 @@ class PipelineSchema:
 def validate_dummy_input(filepath: Path) -> Optional[List[str]]:
     "Wrap the output file validator for now, since it is the same"
     try:
-        validate_dummy_output(filepath)
+        validate_dummy_file(filepath)
     except Exception as e:
         return [e.args[0]]
 

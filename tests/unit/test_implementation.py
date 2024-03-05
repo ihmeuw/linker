@@ -1,18 +1,28 @@
+from pathlib import Path
+
 import pytest
 
 from linker.implementation import Implementation
+from linker.runner import run_container
 from linker.step import Step
 
 
-def test_implementation_is_missing_from_metadata():
+def test_fails_when_missing_results(default_config, mocker):
+    implementation = Implementation(
+        config=default_config,
+        step=Step("step_1"),
+    )
+    mocker.patch("linker.runner.run_container", return_value=None)
+    mocker.patch("linker.runner.run_with_singularity", return_value=None)
     with pytest.raises(
         RuntimeError,
-        match="Implementation 'some-other-implementation' is not defined in implementation_metadata.yaml",
+        match="No results found for pipeline step ID .* in results directory '.*'",
     ):
-        Implementation(
-            step=Step("some-step"),
-            implementation_name="some-other-implementation",
-            implementation_config=None,
-            container_engine="undefined",
-            resources={"foo": "bar"},
+        implementation.run(
+            session=None,
+            runner=run_container,
+            step_id="step_1",
+            input_data=[],
+            results_dir=Path("some-path"),
+            diagnostics_dir=Path("some-path"),
         )

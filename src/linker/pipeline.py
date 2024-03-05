@@ -13,6 +13,7 @@ class Pipeline:
     def __init__(self, config: Config):
         self.config = config
         self.implementations = self._get_implementations()
+        # TODO [MIC-4880]: refactor into validation object
         self._validate()
 
     def run(
@@ -62,14 +63,10 @@ class Pipeline:
             session.exit()
 
     def _get_implementations(self) -> Tuple[Implementation, ...]:
-        resources = {key: self.config.environment.get(key) for key in ["slurm", "spark"]}
         return tuple(
             Implementation(
+                config=self.config,
                 step=step,
-                implementation_name=self.config.get_implementation_name(step.name),
-                implementation_config=self.config.get_implementation_config(step.name),
-                container_engine=self.config.container_engine,
-                resources=resources,
             )
             for step in self.config.schema.steps
         )
