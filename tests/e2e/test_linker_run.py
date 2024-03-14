@@ -24,17 +24,17 @@ RESULT_CHECKSUM = "adb46fa755d56105c16e6d1b2b2c185e1b9ba8fccc8f68aae5635f695d552
     "pipeline_specification, input_data, computing_environment",
     [
         # local
-        (
-            "pipeline.yaml",
-            "input_data.yaml",
-            "environment_local.yaml",
-        ),
-        # # slurm
         # (
         #     "pipeline.yaml",
         #     "input_data.yaml",
-        #     "environment_slurm.yaml",
+        #     "environment_local.yaml",
         # ),
+        # slurm
+        (
+            "pipeline.yaml",
+            "input_data.yaml",
+            "environment_slurm.yaml",
+        ),
     ],
 )
 def test_linker_run(
