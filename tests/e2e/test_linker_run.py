@@ -38,7 +38,7 @@ RESULT_CHECKSUM = "adb46fa755d56105c16e6d1b2b2c185e1b9ba8fccc8f68aae5635f695d552
     ],
 )
 def test_linker_run(
-    pipeline_specification, input_data, computing_environment, capsys, test_env_dir
+    pipeline_specification, input_data, computing_environment, capsys
 ):
     """e2e tests for 'linker run' command"""
     # Create a temporary directory to store results. We cannot use pytest's tmp_path fixture
@@ -67,7 +67,9 @@ def test_linker_run(
     #         check=True,
     #     )
     result = CliRunner().invoke(cli=cli.linker, args=cli_args)
-
+    print(result.stdout)
+    print(result.stderr)
+    print(result.exc_info)
     assert result.exit_code == 0
     assert (results_dir / "result.parquet").exists()
     # Check that the results file checksum matches the expected value
