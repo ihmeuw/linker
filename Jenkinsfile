@@ -34,8 +34,8 @@ pipeline {
     )
     string(
       name: "SLACK_TO",
-      defaultValue: "master",
-      description: "The branch to build."
+      defaultValue: "simsci-ci-status",
+      description: "The slack channel to send notifications to."
     )
   }
 
