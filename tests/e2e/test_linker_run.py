@@ -40,7 +40,9 @@ def test_linker_run(pipeline_specification, input_data, computing_environment):
     # Create a temporary directory to store results. We cannot use pytest's tmp_path fixture
     # because other nodes do not have access to it.
     print(f"Is this on slurm: {is_on_slurm()}")  # print for jenkins
-    with tempfile.TemporaryDirectory(dir="tests/e2e/") as results_dir:
+    with tempfile.TemporaryDirectory(
+        dir="/mnt/team/simulation_science/priv/engineering/scratch/"
+    ) as results_dir:
         results_dir = Path(results_dir)
         cli_args = (
             "run "
